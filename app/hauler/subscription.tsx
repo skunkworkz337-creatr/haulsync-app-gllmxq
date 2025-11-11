@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Pressable,
   Alert,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -16,42 +17,67 @@ import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { subscriptionTiers } from '@/data/subscriptionTiers';
 import { SubscriptionTier } from '@/types/user';
+import { usePurchases } from '@/hooks/usePurchases';
+import { PRODUCT_IDS } from '@/services/purchaseService';
 
 export default function SubscriptionScreen() {
   const [selectedTier, setSelectedTier] = useState<SubscriptionTier>('free');
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'annual'>('monthly');
   const [loading, setLoading] = useState(false);
   const { updateUser } = useAuth();
+  const { products, loading: productsLoading, purchaseProduct, restorePurchases, getProductPrice } = usePurchases();
 
   const handleSubscribe = async () => {
     if (selectedTier === 'free') {
-      router.back();
+      // Free tier - just update user
+      try {
+        await updateUser({
+          subscriptionTier: 'free',
+          subscriptionExpiresAt: undefined,
+        });
+        Alert.alert(
+          'Free Plan Selected',
+          'You are now on the Free plan.',
+          [{ text: 'OK', onPress: () => router.back() }]
+        );
+      } catch (error) {
+        console.log('Error updating to free tier:', error);
+        Alert.alert('Error', 'Failed to update subscription. Please try again.');
+      }
       return;
     }
 
+    // Paid tier - initiate in-app purchase
     setLoading(true);
     try {
-      // In a real app, process payment via Stripe or similar
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      const expiresAt = new Date();
-      expiresAt.setMonth(expiresAt.getMonth() + (billingPeriod === 'annual' ? 12 : 1));
-      
-      await updateUser({
-        subscriptionTier: selectedTier,
-        subscriptionExpiresAt: expiresAt,
-      });
-      
-      Alert.alert(
-        'Subscription Active',
-        `You&apos;re now subscribed to the ${selectedTier.toUpperCase()} plan!`,
-        [
-          {
-            text: 'OK',
-            onPress: () => router.back(),
-          },
-        ]
-      );
+      // Get the product ID based on tier and billing period
+      let productId = '';
+      if (selectedTier === 'pro') {
+        productId = billingPeriod === 'monthly' ? PRODUCT_IDS.pro_monthly : PRODUCT_IDS.pro_annual;
+      } else if (selectedTier === 'premier') {
+        productId = billingPeriod === 'monthly' ? PRODUCT_IDS.premier_monthly : PRODUCT_IDS.premier_annual;
+      }
+
+      console.log('Initiating purchase for:', productId);
+      const success = await purchaseProduct(productId);
+
+      if (success) {
+        // Calculate expiration date
+        const expiresAt = new Date();
+        expiresAt.setMonth(expiresAt.getMonth() + (billingPeriod === 'annual' ? 12 : 1));
+
+        // Update user subscription
+        await updateUser({
+          subscriptionTier: selectedTier,
+          subscriptionExpiresAt: expiresAt,
+        });
+
+        Alert.alert(
+          'Subscription Active',
+          `You are now subscribed to the ${selectedTier.toUpperCase()} plan!`,
+          [{ text: 'OK', onPress: () => router.back() }]
+        );
+      }
     } catch (error) {
       console.log('Error subscribing:', error);
       Alert.alert('Error', 'Failed to process subscription. Please try again.');
@@ -60,10 +86,35 @@ export default function SubscriptionScreen() {
     }
   };
 
+  const handleRestorePurchases = async () => {
+    Alert.alert(
+      'Restore Purchases',
+      'This will restore any previous purchases made with this Apple ID or Google account.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Restore',
+          onPress: async () => {
+            try {
+              await restorePurchases();
+            } catch (error) {
+              console.log('Error restoring purchases:', error);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const selectedTierInfo = subscriptionTiers.find(t => t.id === selectedTier);
-  const price = billingPeriod === 'monthly' 
-    ? selectedTierInfo?.monthlyPrice 
-    : selectedTierInfo?.annualPrice;
+  
+  // Get price from products if available, otherwise use default
+  const displayPrice = selectedTier !== 'free' 
+    ? getProductPrice(selectedTier, billingPeriod) || 
+      (billingPeriod === 'monthly' 
+        ? `$${selectedTierInfo?.monthlyPrice}` 
+        : `$${selectedTierInfo?.annualPrice}`)
+    : 'Free';
 
   return (
     <SafeAreaView style={commonStyles.container}>
@@ -74,6 +125,13 @@ export default function SubscriptionScreen() {
             Select the subscription that fits your needs
           </Text>
         </View>
+
+        {productsLoading && (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.loadingText}>Loading subscription options...</Text>
+          </View>
+        )}
 
         <View style={styles.billingToggle}>
           <Pressable
@@ -115,7 +173,10 @@ export default function SubscriptionScreen() {
 
         {subscriptionTiers.map(tier => {
           const isSelected = selectedTier === tier.id;
-          const tierPrice = billingPeriod === 'monthly' ? tier.monthlyPrice : tier.annualPrice;
+          const tierPrice = tier.id !== 'free'
+            ? getProductPrice(tier.id, billingPeriod) ||
+              (billingPeriod === 'monthly' ? `$${tier.monthlyPrice}` : `$${tier.annualPrice}`)
+            : 'Free';
           
           return (
             <Pressable
@@ -131,8 +192,8 @@ export default function SubscriptionScreen() {
                 <View>
                   <Text style={styles.tierName}>{tier.name}</Text>
                   <Text style={styles.tierPrice}>
-                    {tierPrice === 0 ? 'Free' : `$${tierPrice}`}
-                    {tierPrice > 0 && (
+                    {tierPrice}
+                    {tier.id !== 'free' && (
                       <Text style={styles.tierPeriod}>
                         /{billingPeriod === 'monthly' ? 'mo' : 'yr'}
                       </Text>
@@ -166,7 +227,9 @@ export default function SubscriptionScreen() {
           <IconSymbol name="info.circle.fill" size={24} color={colors.primary} />
           <View style={styles.infoContent}>
             <Text style={styles.infoText}>
-              You can upgrade, downgrade, or cancel your subscription at any time. Changes will take effect at the start of your next billing cycle.
+              Subscriptions are processed through {Platform.OS === 'ios' ? 'Apple App Store' : 'Google Play Store'}. 
+              You can manage your subscription in your {Platform.OS === 'ios' ? 'Apple ID' : 'Google Play'} settings. 
+              Changes will take effect at the start of your next billing cycle.
             </Text>
           </View>
         </View>
@@ -174,7 +237,7 @@ export default function SubscriptionScreen() {
         <Pressable
           style={[buttonStyles.primary, styles.subscribeButton]}
           onPress={handleSubscribe}
-          disabled={loading}
+          disabled={loading || productsLoading}
         >
           {loading ? (
             <ActivityIndicator color={colors.card} />
@@ -182,10 +245,25 @@ export default function SubscriptionScreen() {
             <Text style={buttonStyles.text}>
               {selectedTier === 'free' 
                 ? 'Continue with Free' 
-                : `Subscribe for $${price}/${billingPeriod === 'monthly' ? 'mo' : 'yr'}`}
+                : `Subscribe - ${displayPrice}/${billingPeriod === 'monthly' ? 'mo' : 'yr'}`}
             </Text>
           )}
         </Pressable>
+
+        <Pressable
+          style={[buttonStyles.secondary, styles.restoreButton]}
+          onPress={handleRestorePurchases}
+          disabled={loading || productsLoading}
+        >
+          <Text style={[buttonStyles.text, { color: colors.primary }]}>
+            Restore Purchases
+          </Text>
+        </Pressable>
+
+        <Text style={styles.disclaimer}>
+          By subscribing, you agree to our Terms of Service and Privacy Policy. 
+          Subscriptions automatically renew unless cancelled at least 24 hours before the end of the current period.
+        </Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -198,6 +276,15 @@ const styles = StyleSheet.create({
   header: {
     alignItems: 'center',
     marginBottom: 24,
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    padding: 20,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: colors.textSecondary,
   },
   billingToggle: {
     flexDirection: 'row',
@@ -312,6 +399,16 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   subscribeButton: {
-    marginBottom: 20,
+    marginBottom: 12,
+  },
+  restoreButton: {
+    marginBottom: 16,
+  },
+  disclaimer: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 18,
+    paddingHorizontal: 20,
   },
 });

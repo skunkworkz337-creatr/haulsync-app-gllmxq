@@ -15,15 +15,17 @@ import { router } from 'expo-router';
 import { colors, buttonStyles, commonStyles } from '@/styles/commonStyles';
 import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
+import { useFeatureAccess } from '@/hooks/useFeatureAccess';
 
 const SERVICE_AREAS = [
   'Downtown',
-  'North Side',
-  'South Side',
+  'North District',
+  'South District',
   'East Side',
   'West Side',
   'Suburbs',
-  'County-wide',
+  'Industrial Zone',
+  'Harbor Area',
 ];
 
 export default function OnboardingScreen() {
@@ -31,13 +33,32 @@ export default function OnboardingScreen() {
   const [selectedAreas, setSelectedAreas] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const { updateUser } = useAuth();
+  const { canAddServiceArea, tierFeatures, userTier } = useFeatureAccess();
 
   const toggleArea = (area: string) => {
-    setSelectedAreas(prev =>
-      prev.includes(area)
-        ? prev.filter(a => a !== area)
-        : [...prev, area]
-    );
+    if (selectedAreas.includes(area)) {
+      setSelectedAreas(selectedAreas.filter(a => a !== area));
+    } else {
+      // Check if user can add more service areas
+      const access = canAddServiceArea(selectedAreas.length);
+      
+      if (!access.canAccessFeature) {
+        Alert.alert(
+          'Upgrade Required',
+          access.reason || 'You have reached the maximum number of service areas for your plan.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Upgrade',
+              onPress: () => router.push('/hauler/subscription'),
+            },
+          ]
+        );
+        return;
+      }
+      
+      setSelectedAreas([...selectedAreas, area]);
+    }
   };
 
   const handleComplete = async () => {
@@ -53,22 +74,19 @@ export default function OnboardingScreen() {
 
     setLoading(true);
     try {
-      // In a real app, save to server
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
       await updateUser({
-        status: 'active',
-        businessName,
+        businessName: businessName.trim(),
         serviceAreas: selectedAreas,
+        status: 'active',
       });
-      
+
       Alert.alert(
         'Onboarding Complete!',
-        'Your account is now active. Choose a subscription plan to start accepting jobs.',
+        'Your account is now active. You can start accepting jobs.',
         [
           {
-            text: 'Choose Plan',
-            onPress: () => router.replace('/hauler/subscription'),
+            text: 'Get Started',
+            onPress: () => router.replace('/(tabs)/(home)'),
           },
         ]
       );
@@ -80,74 +98,102 @@ export default function OnboardingScreen() {
     }
   };
 
+  const maxAreas = tierFeatures.maxServiceAreas === -1 
+    ? 'Unlimited' 
+    : tierFeatures.maxServiceAreas;
+
   return (
     <SafeAreaView style={commonStyles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
-          <View style={styles.iconContainer}>
-            <IconSymbol name="checkmark.circle.fill" size={60} color={colors.secondary} />
-          </View>
-          <Text style={commonStyles.title}>Almost There!</Text>
+          <IconSymbol name="checkmark.circle.fill" size={64} color={colors.secondary} />
+          <Text style={commonStyles.title}>Complete Your Profile</Text>
           <Text style={commonStyles.subtitle}>
-            Complete your profile to start accepting jobs
+            Set up your business information and service areas
           </Text>
+        </View>
+
+        <View style={[commonStyles.card, styles.tierInfoCard]}>
+          <View style={styles.tierInfoHeader}>
+            <IconSymbol name="star.fill" size={20} color={colors.primary} />
+            <Text style={styles.tierInfoTitle}>
+              Current Plan: {userTier.toUpperCase()}
+            </Text>
+          </View>
+          <Text style={styles.tierInfoText}>
+            Service Areas: {selectedAreas.length} / {maxAreas}
+          </Text>
+          {tierFeatures.maxServiceAreas !== -1 && selectedAreas.length >= tierFeatures.maxServiceAreas && (
+            <Pressable
+              style={styles.upgradeLink}
+              onPress={() => router.push('/hauler/subscription')}
+            >
+              <Text style={styles.upgradeLinkText}>Upgrade for more areas</Text>
+              <IconSymbol name="arrow.right" size={16} color={colors.primary} />
+            </Pressable>
+          )}
         </View>
 
         <View style={commonStyles.card}>
           <Text style={styles.sectionTitle}>Business Information</Text>
-          <Text style={commonStyles.label}>Business Name</Text>
+          <Text style={styles.label}>Business Name *</Text>
           <TextInput
             style={commonStyles.input}
             placeholder="Enter your business name"
             placeholderTextColor={colors.textSecondary}
             value={businessName}
             onChangeText={setBusinessName}
+            autoCapitalize="words"
           />
-          <Text style={styles.helperText}>
-            This will be displayed to customers when you&apos;re assigned jobs
-          </Text>
         </View>
 
         <View style={commonStyles.card}>
-          <Text style={styles.sectionTitle}>Service Areas</Text>
+          <Text style={styles.sectionTitle}>Service Areas *</Text>
           <Text style={styles.description}>
-            Select the areas where you&apos;re willing to provide services
+            Select the areas where you want to provide hauling services
           </Text>
+
           <View style={styles.areasGrid}>
-            {SERVICE_AREAS.map(area => (
-              <Pressable
-                key={area}
-                style={[
-                  styles.areaChip,
-                  selectedAreas.includes(area) && styles.areaChipSelected,
-                ]}
-                onPress={() => toggleArea(area)}
-              >
-                <Text
+            {SERVICE_AREAS.map(area => {
+              const isSelected = selectedAreas.includes(area);
+              const canSelect = selectedAreas.length < tierFeatures.maxServiceAreas || 
+                               tierFeatures.maxServiceAreas === -1 || 
+                               isSelected;
+
+              return (
+                <Pressable
+                  key={area}
                   style={[
-                    styles.areaChipText,
-                    selectedAreas.includes(area) && styles.areaChipTextSelected,
+                    styles.areaChip,
+                    isSelected && styles.areaChipSelected,
+                    !canSelect && styles.areaChipDisabled,
                   ]}
+                  onPress={() => toggleArea(area)}
+                  disabled={!canSelect && !isSelected}
                 >
-                  {area}
-                </Text>
-                {selectedAreas.includes(area) && (
-                  <IconSymbol name="checkmark" size={16} color={colors.card} />
-                )}
-              </Pressable>
-            ))}
+                  {isSelected && (
+                    <IconSymbol name="checkmark" size={16} color={colors.card} />
+                  )}
+                  <Text
+                    style={[
+                      styles.areaChipText,
+                      isSelected && styles.areaChipTextSelected,
+                      !canSelect && styles.areaChipTextDisabled,
+                    ]}
+                  >
+                    {area}
+                  </Text>
+                  {!canSelect && !isSelected && (
+                    <IconSymbol name="lock.fill" size={14} color={colors.textSecondary} />
+                  )}
+                </Pressable>
+              );
+            })}
           </View>
         </View>
 
-        <View style={[commonStyles.card, styles.infoCard]}>
-          <IconSymbol name="info.circle.fill" size={24} color={colors.primary} />
-          <Text style={styles.infoText}>
-            You can update your service areas later in your profile settings. Your subscription tier will determine how many areas you can serve.
-          </Text>
-        </View>
-
         <Pressable
-          style={[buttonStyles.primary, styles.button]}
+          style={[buttonStyles.primary, styles.completeButton]}
           onPress={handleComplete}
           disabled={loading}
         >
@@ -168,16 +214,50 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    marginBottom: 32,
+    marginBottom: 24,
   },
-  iconContainer: {
+  tierInfoCard: {
+    backgroundColor: colors.highlight,
     marginBottom: 16,
+  },
+  tierInfoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  tierInfoTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  tierInfoText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: 8,
+  },
+  upgradeLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+  },
+  upgradeLinkText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 16,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 8,
   },
   description: {
     fontSize: 14,
@@ -185,31 +265,28 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     lineHeight: 20,
   },
-  helperText: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginTop: -8,
-    lineHeight: 18,
-  },
   areasGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 12,
   },
   areaChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 16,
     paddingVertical: 10,
+    paddingHorizontal: 16,
     borderRadius: 20,
+    backgroundColor: colors.background,
     borderWidth: 2,
     borderColor: colors.border,
-    backgroundColor: colors.card,
   },
   areaChipSelected: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
+  },
+  areaChipDisabled: {
+    opacity: 0.5,
   },
   areaChipText: {
     fontSize: 14,
@@ -219,18 +296,11 @@ const styles = StyleSheet.create({
   areaChipTextSelected: {
     color: colors.card,
   },
-  infoCard: {
-    flexDirection: 'row',
-    gap: 12,
-    backgroundColor: colors.highlight,
+  areaChipTextDisabled: {
+    color: colors.textSecondary,
   },
-  infoText: {
-    flex: 1,
-    fontSize: 14,
-    color: colors.text,
-    lineHeight: 20,
-  },
-  button: {
-    marginTop: 8,
+  completeButton: {
+    marginTop: 24,
+    marginBottom: 20,
   },
 });
