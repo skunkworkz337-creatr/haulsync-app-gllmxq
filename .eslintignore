@@ -12,4 +12,4 @@ node_modules/
 *.bundle.js.map
 
 # Ignore Supabase Edge Functions (Deno environment)
-supabase/functions/
+supabase/

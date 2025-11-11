@@ -1,3 +1,4 @@
+
 // https://docs.expo.dev/guides/using-eslint/
 module.exports = {
   extends: [
@@ -17,7 +18,12 @@ module.exports = {
       jsx: true
     }
   },
-  ignorePatterns: ['/dist/*', '/public/*', '/babel-plugins/*'],
+  ignorePatterns: [
+    '/dist/*', 
+    '/public/*', 
+    '/babel-plugins/*',
+    'supabase/**/*'
+  ],
   env: {
     browser: true,
   },
@@ -30,7 +36,12 @@ module.exports = {
     "@typescript-eslint/no-empty-object-type": "off",
     "@typescript-eslint/no-wrapper-object-types": "off",
     "react/no-unescaped-entities": "off",
-    "import/no-unresolved": "error",
+    "import/no-unresolved": ["error", {
+      ignore: [
+        '^https://',  // Ignore Deno-style imports
+        '^jsr:',      // Ignore JSR imports
+      ]
+    }],
     "prefer-const": "off",
     "react/prop-types": 1,
     "no-case-declarations": "off",
@@ -42,6 +53,13 @@ module.exports = {
       files: ['metro.config.js'],
       rules: {
         '@typescript-eslint/no-var-requires': 'off'
+      }
+    },
+    {
+      files: ['supabase/**/*'],
+      rules: {
+        'import/no-unresolved': 'off',
+        '@typescript-eslint/no-unused-vars': 'off'
       }
     }
   ]
