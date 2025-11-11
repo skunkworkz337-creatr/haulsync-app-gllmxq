@@ -1,161 +1,337 @@
-import React from "react";
-import { Stack, Link } from "expo-router";
-import { FlatList, Pressable, StyleSheet, View, Text, Alert, Platform } from "react-native";
-import { IconSymbol } from "@/components/IconSymbol";
-import { GlassView } from "expo-glass-effect";
-import { useTheme } from "@react-navigation/native";
 
-const ICON_COLOR = "#007AFF";
+import React, { useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, Platform } from 'react-native';
+import { router, Redirect } from 'expo-router';
+import { colors, commonStyles } from '@/styles/commonStyles';
+import { useAuth } from '@/contexts/AuthContext';
+import { IconSymbol } from '@/components/IconSymbol';
+import { Hauler } from '@/types/user';
 
 export default function HomeScreen() {
-  const theme = useTheme();
-  const modalDemos = [
-    {
-      title: "Standard Modal",
-      description: "Full screen modal presentation",
-      route: "/modal",
-      color: "#007AFF",
-    },
-    {
-      title: "Form Sheet",
-      description: "Bottom sheet with detents and grabber",
-      route: "/formsheet",
-      color: "#34C759",
-    },
-    {
-      title: "Transparent Modal",
-      description: "Overlay without obscuring background",
-      route: "/transparent-modal",
-      color: "#FF9500",
-    }
-  ];
+  const { user, isAuthenticated, isLoading } = useAuth();
 
-  const renderModalDemo = ({ item }: { item: (typeof modalDemos)[0] }) => (
-    <GlassView style={[
-      styles.demoCard,
-      Platform.OS !== 'ios' && { backgroundColor: theme.dark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }
-    ]} glassEffectStyle="regular">
-      <View style={[styles.demoIcon, { backgroundColor: item.color }]}>
-        <IconSymbol name="square.grid.3x3" color="white" size={24} />
+  if (isLoading) {
+    return (
+      <View style={[commonStyles.container, styles.centered]}>
+        <Text style={styles.loadingText}>Loading...</Text>
       </View>
-      <View style={styles.demoContent}>
-        <Text style={[styles.demoTitle, { color: theme.colors.text }]}>{item.title}</Text>
-        <Text style={[styles.demoDescription, { color: theme.dark ? '#98989D' : '#666' }]}>{item.description}</Text>
-      </View>
-      <Link href={item.route as any} asChild>
-        <Pressable>
-          <GlassView style={[
-            styles.tryButton,
-            Platform.OS !== 'ios' && { backgroundColor: theme.dark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)' }
-          ]} glassEffectStyle="clear">
-            <Text style={[styles.tryButtonText, { color: theme.colors.primary }]}>Try It</Text>
-          </GlassView>
-        </Pressable>
-      </Link>
-    </GlassView>
-  );
+    );
+  }
 
-  const renderHeaderRight = () => (
-    <Pressable
-      onPress={() => Alert.alert("Not Implemented", "This feature is not implemented yet")}
-      style={styles.headerButtonContainer}
-    >
-      <IconSymbol name="plus" color={theme.colors.primary} />
-    </Pressable>
-  );
+  if (!isAuthenticated) {
+    return <Redirect href="/welcome" />;
+  }
 
-  const renderHeaderLeft = () => (
-    <Pressable
-      onPress={() => Alert.alert("Not Implemented", "This feature is not implemented yet")}
-      style={styles.headerButtonContainer}
-    >
-      <IconSymbol
-        name="gear"
-        color={theme.colors.primary}
-      />
-    </Pressable>
-  );
+  const isHauler = user?.role === 'hauler';
+  const hauler = isHauler ? (user as Hauler) : null;
 
   return (
-    <>
-      {Platform.OS === 'ios' && (
-        <Stack.Screen
-          options={{
-            title: "Building the app...",
-            headerRight: renderHeaderRight,
-            headerLeft: renderHeaderLeft,
-          }}
-        />
-      )}
-      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-        <FlatList
-          data={modalDemos}
-          renderItem={renderModalDemo}
-          keyExtractor={(item) => item.route}
-          contentContainerStyle={[
-            styles.listContainer,
-            Platform.OS !== 'ios' && styles.listContainerWithTabBar
-          ]}
-          contentInsetAdjustmentBehavior="automatic"
-          showsVerticalScrollIndicator={false}
-        />
-      </View>
-    </>
+    <View style={commonStyles.container}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          Platform.OS !== 'ios' && styles.scrollContentWithTabBar,
+        ]}
+      >
+        <View style={styles.header}>
+          <Text style={styles.greeting}>
+            Welcome back, {user?.firstName}! 👋
+          </Text>
+          <Text style={styles.subGreeting}>
+            {isHauler ? 'Ready to take on new jobs?' : 'Need something hauled?'}
+          </Text>
+        </View>
+
+        {isHauler && hauler && (
+          <View style={[commonStyles.card, styles.statusCard]}>
+            <View style={styles.statusHeader}>
+              <Text style={styles.statusTitle}>Account Status</Text>
+              <View
+                style={[
+                  styles.statusBadge,
+                  hauler.status === 'active' && styles.statusBadgeActive,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.statusBadgeText,
+                    hauler.status === 'active' && styles.statusBadgeTextActive,
+                  ]}
+                >
+                  {hauler.status.replace(/_/g, ' ').toUpperCase()}
+                </Text>
+              </View>
+            </View>
+
+            {hauler.status === 'pending_background_check' && (
+              <View style={styles.actionContainer}>
+                <Text style={styles.actionText}>
+                  Complete your background check to start accepting jobs
+                </Text>
+                <Pressable
+                  style={styles.actionButton}
+                  onPress={() => router.push('/hauler/background-check')}
+                >
+                  <Text style={styles.actionButtonText}>Start Background Check</Text>
+                  <IconSymbol name="chevron.right" size={20} color={colors.primary} />
+                </Pressable>
+              </View>
+            )}
+
+            {hauler.status === 'background_check_approved' && (
+              <View style={styles.actionContainer}>
+                <Text style={styles.actionText}>
+                  Upload required documents to continue
+                </Text>
+                <Pressable
+                  style={styles.actionButton}
+                  onPress={() => router.push('/hauler/documents')}
+                >
+                  <Text style={styles.actionButtonText}>Upload Documents</Text>
+                  <IconSymbol name="chevron.right" size={20} color={colors.primary} />
+                </Pressable>
+              </View>
+            )}
+
+            {hauler.status === 'documents_submitted' && (
+              <View style={styles.actionContainer}>
+                <Text style={styles.actionText}>
+                  Complete your onboarding to start working
+                </Text>
+                <Pressable
+                  style={styles.actionButton}
+                  onPress={() => router.push('/hauler/onboarding')}
+                >
+                  <Text style={styles.actionButtonText}>Complete Onboarding</Text>
+                  <IconSymbol name="chevron.right" size={20} color={colors.primary} />
+                </Pressable>
+              </View>
+            )}
+          </View>
+        )}
+
+        {isHauler && hauler?.status === 'active' && (
+          <View style={[commonStyles.card, styles.subscriptionCard]}>
+            <View style={styles.subscriptionHeader}>
+              <Text style={styles.subscriptionTitle}>Current Plan</Text>
+              <Text style={styles.subscriptionTier}>
+                {hauler.subscriptionTier.toUpperCase()}
+              </Text>
+            </View>
+            <Pressable
+              style={styles.upgradeButton}
+              onPress={() => router.push('/hauler/subscription')}
+            >
+              <Text style={styles.upgradeButtonText}>Upgrade Plan</Text>
+            </Pressable>
+          </View>
+        )}
+
+        <View style={commonStyles.card}>
+          <Text style={styles.sectionTitle}>
+            {isHauler ? 'Available Jobs' : 'Your Jobs'}
+          </Text>
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyStateIcon}>📋</Text>
+            <Text style={styles.emptyStateText}>
+              {isHauler ? 'No jobs available right now' : 'You haven&apos;t posted any jobs yet'}
+            </Text>
+            {!isHauler && (
+              <Pressable style={styles.emptyStateButton}>
+                <Text style={styles.emptyStateButtonText}>Post a Job</Text>
+              </Pressable>
+            )}
+          </View>
+        </View>
+
+        <View style={[commonStyles.card, styles.statsCard]}>
+          <Text style={styles.sectionTitle}>Quick Stats</Text>
+          <View style={styles.statsGrid}>
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>0</Text>
+              <Text style={styles.statLabel}>
+                {isHauler ? 'Jobs Completed' : 'Jobs Posted'}
+              </Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>0</Text>
+              <Text style={styles.statLabel}>
+                {isHauler ? 'Earnings' : 'Active Jobs'}
+              </Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>-</Text>
+              <Text style={styles.statLabel}>Rating</Text>
+            </View>
+          </View>
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    // backgroundColor handled dynamically
-  },
-  listContainer: {
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-  },
-  listContainerWithTabBar: {
-    paddingBottom: 100, // Extra padding for floating tab bar
-  },
-  demoCard: {
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  demoIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+  centered: {
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 16,
   },
-  demoContent: {
-    flex: 1,
+  loadingText: {
+    fontSize: 16,
+    color: colors.textSecondary,
   },
-  demoTitle: {
+  scrollContent: {
+    padding: 20,
+  },
+  scrollContentWithTabBar: {
+    paddingBottom: 100,
+  },
+  header: {
+    marginBottom: 24,
+  },
+  greeting: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  subGreeting: {
+    fontSize: 16,
+    color: colors.textSecondary,
+  },
+  statusCard: {
+    marginBottom: 16,
+  },
+  statusHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  statusTitle: {
     fontSize: 18,
     fontWeight: '600',
-    marginBottom: 4,
-    // color handled dynamically
+    color: colors.text,
   },
-  demoDescription: {
+  statusBadge: {
+    backgroundColor: colors.accent,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  statusBadgeActive: {
+    backgroundColor: colors.secondary,
+  },
+  statusBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  statusBadgeTextActive: {
+    color: colors.card,
+  },
+  actionContainer: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: 16,
+  },
+  actionText: {
     fontSize: 14,
-    lineHeight: 18,
-    // color handled dynamically
+    color: colors.textSecondary,
+    marginBottom: 12,
   },
-  headerButtonContainer: {
-    padding: 6,
+  actionButton: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: colors.highlight,
+    padding: 16,
+    borderRadius: 8,
   },
-  tryButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 6,
+  actionButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.primary,
   },
-  tryButtonText: {
+  subscriptionCard: {
+    marginBottom: 16,
+  },
+  subscriptionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  subscriptionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  subscriptionTier: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  upgradeButton: {
+    backgroundColor: colors.primary,
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  upgradeButtonText: {
     fontSize: 14,
     fontWeight: '600',
-    // color handled dynamically
+    color: colors.card,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 16,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 32,
+  },
+  emptyStateIcon: {
+    fontSize: 48,
+    marginBottom: 16,
+  },
+  emptyStateText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  emptyStateButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  emptyStateButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.card,
+  },
+  statsCard: {
+    marginBottom: 16,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  statItem: {
+    alignItems: 'center',
+  },
+  statValue: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: colors.primary,
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    textAlign: 'center',
   },
 });
