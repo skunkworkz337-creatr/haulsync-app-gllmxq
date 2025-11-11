@@ -83,11 +83,11 @@ export default function DocumentsScreen() {
       
       Alert.alert(
         'Documents Submitted',
-        'Your documents have been submitted for review. Please complete your onboarding.',
+        'Your documents have been submitted for review. Please review the onboarding material and complete the quiz.',
         [
           {
             text: 'Continue',
-            onPress: () => router.replace('/hauler/onboarding'),
+            onPress: () => router.replace('/hauler/onboarding-presentation'),
           },
         ]
       );

@@ -96,13 +96,28 @@ export default function HomeScreen() {
             {hauler.status === 'documents_submitted' && (
               <View style={styles.actionContainer}>
                 <Text style={styles.actionText}>
-                  Complete your onboarding to start working
+                  Review onboarding material and complete the quiz
+                </Text>
+                <Pressable
+                  style={styles.actionButton}
+                  onPress={() => router.push('/hauler/onboarding-presentation')}
+                >
+                  <Text style={styles.actionButtonText}>Start Onboarding</Text>
+                  <IconSymbol name="chevron.right" size={20} color={colors.primary} />
+                </Pressable>
+              </View>
+            )}
+
+            {hauler.status === 'pending_onboarding' && (
+              <View style={styles.actionContainer}>
+                <Text style={styles.actionText}>
+                  Complete your profile setup to start working
                 </Text>
                 <Pressable
                   style={styles.actionButton}
                   onPress={() => router.push('/hauler/onboarding')}
                 >
-                  <Text style={styles.actionButtonText}>Complete Onboarding</Text>
+                  <Text style={styles.actionButtonText}>Complete Profile</Text>
                   <IconSymbol name="chevron.right" size={20} color={colors.primary} />
                 </Pressable>
               </View>
